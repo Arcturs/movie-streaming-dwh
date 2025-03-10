@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  mongodb1:
+    image: mongo:8.0.5-rc2
+    command: mongod --replSet rs0 --bind_ip_all --port 27017
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./initdb/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - mongodb1_data:/data/db
+
+  mongodb2:
+    image: mongo:8.0.5-rc2
+    command: mongod --replSet rs0 --bind_ip_all --port 27017
+    volumes:
+      - ./initdb/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - mongodb2_data:/data/db
+    depends_on:
+      - mongodb1
+
+  mongodb3:
+    image: mongo:8.0.5-rc2
+    command: mongod --replSet rs0 --bind_ip_all --port 27017
+    volumes:
+      - ./initdb/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - mongodb3_data:/data/db
+    depends_on:
+      - mongodb1
+
+  # Note: login - admin, password - pass
+  mongo-express:
+    image: mongo-express:1.0-20-alpine3.19
+    container_name: mongo-express
+    restart: always
+    environment:
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_MONGODB_SERVER: 'mongodb1'
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongodb1
+
+  # Note: после монги выполнить команду:
+  #  docker-compose exec mongodb1 mongosh --eval 'rs.initiate({
+  #  _id: "rs0",
+  #  members: [
+  #    { _id: 0, host: "mongodb1:27017" },
+  #    { _id: 1, host: "mongodb2:27017" },
+  #    { _id: 2, host: "mongodb3:27017" }
+  #  ]
+  #})'
+
+  # После запуска выполнить команду: cypher-shell -u neo4j -p password -f /import/init_data.cypher для добавления начальных данных
+  neo4j-core1:
+    image: neo4j:5.13
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: "apoc"
+      NEO4J_dbms_mode: CORE
+      NEO4J_server_config_strict__validation_enabled: false
+      NEO4J_causal__clustering_initial__discovery__members: neo4j-core1:5000,neo4j-core2:5000,neo4j-core3:5000
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - ./initdb/neo4j:/import
+      - neo4j_core1_data:/data
+
+  neo4j-core2:
+    image: neo4j:5.13
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: "apoc"
+      NEO4J_dbms_mode: CORE
+      NEO4J_server_config_strict__validation_enabled: false
+      NEO4J_causal__clustering_initial__discovery__members: neo4j-core1:5000,neo4j-core2:5000,neo4j-core3:5000
+    volumes:
+      - ./initdb/neo4j:/import
+      - neo4j_core2_data:/data
+    depends_on:
+      - neo4j-core1
+
+  neo4j-core3:
+    image: neo4j:5.13
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: "apoc"
+      NEO4J_dbms_mode: CORE
+      NEO4J_server_config_strict__validation_enabled: false
+      NEO4J_causal__clustering_initial__discovery__members: neo4j-core1:5000,neo4j-core2:5000,neo4j-core3:5000
+    volumes:
+      - ./initdb/neo4j:/import
+      - neo4j_core3_data:/data
+    depends_on:
+      - neo4j-core2
+
+  # Note: подключиться через cqlsh -u cassandra -p cassandra и выполнить действия из скрипта
+  cassandra1:
+    image: bitnami/cassandra:5.0.3
+    ports:
+      - "7001:7000"
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_SEEDS: cassandra1,cassandra2
+    volumes:
+      - ./initdb/cassandra:/docker-entrypoint-initdb.d
+      - cassandra1_data:/var/lib/cassandra
+
+  cassandra2:
+    image: bitnami/cassandra:5.0.3
+    environment:
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_SEEDS: cassandra1,cassandra2
+    volumes:
+      - ./initdb/cassandra:/docker-entrypoint-initdb.d
+      - cassandra2_data:/var/lib/cassandra
+    depends_on:
+      - cassandra1
+
+  cassandra3:
+    image: bitnami/cassandra:5.0.3
+    environment:
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_SEEDS: cassandra1,cassandra2
+    volumes:
+      - ./initdb/cassandra:/docker-entrypoint-initdb.d
+      - cassandra3_data:/var/lib/cassandra
+    depends_on:
+      - cassandra2
+
+volumes:
+  mongodb1_data:
+  mongodb2_data:
+  mongodb3_data:
+  neo4j_core1_data:
+  neo4j_core2_data:
+  neo4j_core3_data:
+  cassandra1_data:
+  cassandra2_data:
+  cassandra3_data:
